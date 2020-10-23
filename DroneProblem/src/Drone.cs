@@ -1,4 +1,4 @@
-﻿namespace Derivco
+﻿namespace DroneProblem
 {
     internal class Drone : BaseDrone
     {

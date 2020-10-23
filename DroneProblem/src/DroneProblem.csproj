@@ -50,9 +50,7 @@
     <Compile Include="CsvService.cs" />
     <Compile Include="Dispatcher.cs" />
     <Compile Include="Drone.cs" />
-    <Compile Include="ICsvService.cs" />
     <Compile Include="BaseDrone.cs" />
-    <Compile Include="IDispatcher.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TrafficReport.cs" />
@@ -65,7 +63,7 @@
     <None Include="Resources\6043.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="Resources\DroneProblemSports_Drone_Simulation.docx" />
+    <None Include="Resources\Drone_Simulation.docx" />
     <None Include="Resources\tube.csv">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
