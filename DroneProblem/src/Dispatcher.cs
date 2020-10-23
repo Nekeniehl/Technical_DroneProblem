@@ -1,4 +1,4 @@
-﻿namespace Derivco
+﻿namespace DroneProblem
 {
     #region Using
 
@@ -7,49 +7,70 @@
     using System.Collections.Generic;
     using System.Device.Location;
     using System.Linq;
+    using System.Reflection;
     using System.Threading.Tasks;
 
     #endregion
 
+    internal interface IDispatcher
+    {
+        ICsvService CsvService { get; set; }
+
+        ConcurrentDictionary<BaseDrone, Queue<ICsvLine>> DronesPathInfo { get; }
+
+        List<ICsvLine> TubeStations { get; set; }
+
+        Task Dispatch();
+
+        void Drone_DestinationReached(object sender, DroneInfo e);
+
+        Task DroneControl(BaseDrone inBaseDrone, Queue<ICsvLine> inDronePath);
+
+        void Init(IEnumerable<ICsvLine> inCsvFiles);
+    }
+
     internal class Dispatcher : IDispatcher
     {
+        public ICsvService CsvService { get; set; }
+
+        public Dispatcher(ICsvService inService) => CsvService = inService;
+
         #region Properties
 
-        private ConcurrentDictionary<BaseDrone, Queue<(GeoCoordinate GeoCoordinate, DateTime Date)>> DronesPathInfo
+        public ConcurrentDictionary<BaseDrone, Queue<ICsvLine>> DronesPathInfo
         {
             get;
         }
             =
-            new ConcurrentDictionary<BaseDrone, Queue<(GeoCoordinate, DateTime)>>();
+            new ConcurrentDictionary<BaseDrone, Queue<ICsvLine>>();
 
-        private IDictionary<string, GeoCoordinate> TubeStations { get; set; } = new Dictionary<string, GeoCoordinate>();
+        public List<ICsvLine> TubeStations { get; set; } = new List<ICsvLine>();
 
         #endregion
 
         public async Task Dispatch()
         {
-            var droneControTaskList = DronesPathInfo.Select(droneInfo => DroneControl(droneInfo.Key, droneInfo.Value))
-                .ToList();
+            var droneControTaskList = DronesPathInfo.Select(droneInfo => DroneControl(droneInfo.Key, droneInfo.Value)).ToList();
 
             await Task.WhenAll(droneControTaskList);
         }
 
-        public void Drone_DestinationReached(object sender, (GeoCoordinate Coordinate, DateTime Time) e)
+        public void Drone_DestinationReached(object sender, DroneInfo inDroneInfo)
         {
             var drone = (BaseDrone) sender;
 
-            Console.WriteLine($"Drone {drone.Id} reached coordinate {e.Coordinate} at {e.Time.TimeOfDay}.");
+            Console.WriteLine($"Drone {drone.Id} reached coordinate {inDroneInfo.GeoCoordinate} at {inDroneInfo.Date.TimeOfDay}.");
 
             //Search for nearby stations
-            foreach (var keyValuePair in TubeStations.Where(keyValuePair =>
-                e.Coordinate.GetDistanceTo(keyValuePair.Value) < 350))
-            {
+            foreach (var _ in TubeStations.Where(pair =>
+                inDroneInfo.GeoCoordinate.GetDistanceTo(pair.GeoCoordinate) < 350))
+            {   
                 //Tell the drone to report the traffic
-                ((BaseDrone) sender).ReportTrafficConditions(e.Time);
+                ((BaseDrone) sender).ReportTrafficConditions(inDroneInfo.Date);
             }
         }
 
-        public async Task DroneControl(BaseDrone inBaseDrone, Queue<(GeoCoordinate, DateTime)> inDronePath)
+        public async Task DroneControl(BaseDrone inBaseDrone, Queue<ICsvLine> inDronePath)
         {
             DateTime shutdownTime = default;
             shutdownTime = shutdownTime.AddHours(8);
@@ -59,7 +80,7 @@
 
             while (inDronePath.Count > 0 || !shutdown)
             {
-                var buffer = new List<(GeoCoordinate, DateTime)>(10);
+                var buffer = new List<DroneInfo>(10);
                 for (var i = 0; i < 10; i++)
                 {
                     if (!inDronePath.Any())
@@ -69,16 +90,16 @@
                         break;
                     }
 
-                    var path = inDronePath.Dequeue();
+                    var path = (DroneInfo)inDronePath.Dequeue();
 
                     //Check time 08:10
-                    if (shutdownTime.TimeOfDay < path.Item2.TimeOfDay)
+                    if (shutdownTime.TimeOfDay < path.Date.TimeOfDay)
                     {
                         shutdown = true;
                         break;
                     }
 
-                    buffer.Add((path.Item1, path.Item2));
+                    buffer.Add(path);
                 }
 
                 await inBaseDrone.QueuePath(buffer);
@@ -88,31 +109,37 @@
             inBaseDrone.Shutdown();
         }
 
-        public void LoadDrones(
-            IDictionary<string, List<(GeoCoordinate Coordinate, DateTime Date)>> inDroneInfo)
+        private static void Drone_ShuttingDown(object sender, EventArgs e) =>
+            Console.WriteLine($"Drone {((BaseDrone) sender).Id} shutting down.");
+
+        public void Init(IEnumerable<ICsvLine> inCsvFiles)
         {
-            var dronesToLoad = inDroneInfo.ToList();
+            var list = inCsvFiles.GroupBy(csvFile => csvFile.Id);
 
-            if (dronesToLoad.Any())
+            foreach (var idGroup in list)
             {
-                dronesToLoad.ForEach(dr =>
+                var id = idGroup.Key;
+                var coords = idGroup.ToList();
+
+                var first = coords.First();
+                switch (first)
                 {
-                    var pathQueue = new Queue<(GeoCoordinate Coordinate, DateTime DateTime)>(dr.Value);
+                    case ICsvLineDate _:
 
-                    var drone = new Drone(dr.Key);
+                        var drone = new Drone(id);
+                        drone.DestinationReached += Drone_DestinationReached;
+                        drone.TrafficReport += Drone_TrafficReportReceived;
+                        drone.ShuttingDown += Drone_ShuttingDown;
 
-                    drone.DestinationReached += Drone_DestinationReached;
-                    drone.TrafficReport += Drone_TrafficReportReceived;
-                    drone.ShuttingDown += Drone_ShuttingDown;
+                        DronesPathInfo.TryAdd(drone, new Queue<ICsvLine>(coords.ToList()));
+                        continue;
 
-                    DronesPathInfo.TryAdd(drone, pathQueue);
-                });
+                    case ICsvLine tube:
+                        TubeStations.Add(tube);
+                        continue;
+                }
             }
         }
-
-        private void Drone_ShuttingDown(object sender, EventArgs e) =>
-            Console.WriteLine($"Drone {((BaseDrone) sender).Id} shutting down.");
-        public void LoadTubeStations(IDictionary<string, GeoCoordinate> inTubeInfo) => TubeStations = inTubeInfo;
 
         private static void Drone_TrafficReportReceived(object sender, TrafficReport e) =>
             Console.WriteLine($"Drone {e.DroneId} reporting traffic condition {e.TrafficCondition} at {e.Time.TimeOfDay}.");

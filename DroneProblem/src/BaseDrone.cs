@@ -1,4 +1,4 @@
-﻿namespace Derivco
+﻿namespace DroneProblem
 {
     #region Using
 
@@ -21,7 +21,7 @@
 
         #region Event Handling
 
-        protected internal virtual event EventHandler<(GeoCoordinate Coordinate, DateTime Time)> DestinationReached;
+        protected internal virtual event EventHandler<DroneInfo> DestinationReached;
 
         protected internal virtual event EventHandler ShuttingDown;
 
@@ -33,20 +33,20 @@
 
         internal string Id { get; }
 
-        protected virtual Queue<(GeoCoordinate GeoCoordinate, DateTime Date)> Path { get; set; }
+        protected virtual Queue<DroneInfo> Path { get; set; }
 
         #endregion
 
-        internal virtual async Task QueuePath(IEnumerable<(GeoCoordinate, DateTime)> inPath)
+        internal virtual async Task QueuePath(IEnumerable<DroneInfo> inPath)
         {
-            Path = new Queue<(GeoCoordinate, DateTime)>(inPath);
+            Path = new Queue<DroneInfo>(inPath);
 
             while (Path.Count != 0)
             {
-                var pair = Path.Dequeue();
+                var csvDroneLine = Path.Dequeue();
 
-                await MoveToNextPosition(pair.GeoCoordinate);
-                RaiseDestinationReached(pair.GeoCoordinate, pair.Date);
+                await MoveToNextPosition(csvDroneLine.GeoCoordinate);
+                RaiseDestinationReached(csvDroneLine);
             }
         }
 
@@ -57,8 +57,8 @@
 
         protected virtual Task MoveToNextPosition(GeoCoordinate inGeoCoordinate) => Task.Delay(DRONE_SPEED);
 
-        protected virtual void RaiseDestinationReached(GeoCoordinate inGeoCoordinate, DateTime inDate) =>
-            DestinationReached?.Invoke(this, (inGeoCoordinate, inDate));
+        protected virtual void RaiseDestinationReached(DroneInfo inInfo) =>
+            DestinationReached?.Invoke(this, inInfo);
 
         protected virtual void RaiseTrafficReport(TrafficReport inTrafficReport) =>
             TrafficReport?.Invoke(this, inTrafficReport);

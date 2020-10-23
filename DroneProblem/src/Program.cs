@@ -1,18 +1,18 @@
-﻿namespace Derivco
+﻿namespace DroneProblem
 {
     using System;
+    using System.IO;
     using System.Threading.Tasks;
 
     internal class Program
     {
         private static async Task Main(string[] args)
         {
-            ICsvService csvService = CsvService.Instance;
+            ICsvService csvService = new CsvService();
+            csvService.ReadAllFiles(@".\Resources");
 
-            IDispatcher dispatcher = new Dispatcher();
-            dispatcher.LoadTubeStations(csvService.LoadTubeInfo());
-            dispatcher.LoadDrones(csvService.LoadDronesInfo());
-
+            IDispatcher dispatcher = new Dispatcher(csvService);
+            dispatcher.Init(csvService.CsvFiles);
 
             await dispatcher.Dispatch();
 
